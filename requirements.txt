@@ -1,10 +1,6 @@
 streamlit
 pandas
 numpy
-plotly.graph_objects
-pathlib
-io
-os
 pickle
 swifter
 pytz
