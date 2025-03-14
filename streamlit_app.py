@@ -175,30 +175,30 @@ def prepare_and_cache_data(selected_files, selected_tf_code, selected_reference_
     st.sidebar.success(f"Processed and cached data for {len(selected_files)} files")
 
 # Function to analyze candle batch
-def analyze_candle_batch(h1_data, m1_data, tp_percent, sl_percent, enable_end_of_tf_restriction):
+def analyze_candle_batch(h1_data, reference_data, tp_percent, sl_percent, enable_end_of_tf_restriction):
     batch_results = []
 
     for tf_time, tf_row in h1_data.iterrows():
         tf_end_time = tf_time + pd.Timedelta(hours=1) - pd.Timedelta(seconds=1)
-        m1_candles_in_tf = m1_data.loc[tf_time:tf_end_time]
+        reference_candles_in_tf = reference_data.loc[tf_time:tf_end_time]
 
-        if len(m1_candles_in_tf) > 0:
-            first_m1 = m1_candles_in_tf.iloc[0]
-            m1_direction = "up" if first_m1['close'] > first_m1['open'] else "down"
+        if len(reference_candles_in_tf) > 0:
+            first_reference_candle = reference_candles_in_tf.iloc[0]
+            reference_direction = "up" if first_reference_candle['close'] > first_reference_candle['open'] else "down"
 
-            if m1_direction == "up":
-                target_level = first_m1['close'] * (1 + tp_percent / 100)
-                stop_level = first_m1['close'] * (1 - sl_percent / 100)
+            if reference_direction == "up":
+                target_level = first_reference_candle['close'] * (1 + tp_percent / 100)
+                stop_level = first_reference_candle['close'] * (1 - sl_percent / 100)
             else:
-                target_level = first_m1['close'] * (1 - tp_percent / 100)
-                stop_level = first_m1['close'] * (1 + sl_percent / 100)
+                target_level = first_reference_candle['close'] * (1 - tp_percent / 100)
+                stop_level = first_reference_candle['close'] * (1 + sl_percent / 100)
 
-            next_candles = m1_candles_in_tf.iloc[1:]
+            next_candles = reference_candles_in_tf.iloc[1:]
             hit_target = False
             hit_stop = False
 
             for _, candle in next_candles.iterrows():
-                if m1_direction == "up":
+                if reference_direction == "up":
                     if candle['high'] >= target_level:
                         hit_target = True
                         break
@@ -223,8 +223,8 @@ def analyze_candle_batch(h1_data, m1_data, tp_percent, sl_percent, enable_end_of
             batch_results.append({
                 'tf_datetime': tf_time,
                 'tf_open': tf_row['open'],
-                'first_m1_close': first_m1['close'],
-                'm1_direction': m1_direction,
+                'first_reference_close': first_reference_candle['close'],
+                'reference_direction': reference_direction,
                 'hit_target_first': hit_target_first,
                 'hit_stoploss_first': hit_stoploss_first,
                 'probability': None
@@ -271,25 +271,25 @@ def display_analysis_results(results):
     col1, col2 = st.columns(2)
 
     with col1:
-        up_data = results[results['m1_direction'] == "up"]
+        up_data = results[results['reference_direction'] == "up"]
         up_success = np.sum(up_data['hit_target_first'])
         up_total = np.sum(up_data['hit_target_first'] | up_data['hit_stoploss_first'])
         up_probability = (up_success / up_total * 100) if up_total > 0 else 0
 
         st.metric(
-            label=f"When first M1 closes ABOVE {selected_tf} open",
+            label=f"When first {selected_reference_tf} closes ABOVE {selected_tf} open",
             value=f"{up_probability:.2f}%",
             delta=f"{up_success}/{up_total} cases"
         )
 
     with col2:
-        down_data = results[results['m1_direction'] == "down"]
+        down_data = results[results['reference_direction'] == "down"]
         down_success = np.sum(down_data['hit_target_first'])
         down_total = np.sum(down_data['hit_target_first'] | down_data['hit_stoploss_first'])
         down_probability = (down_success / down_total * 100) if down_total > 0 else 0
 
         st.metric(
-            label=f"When first M1 closes BELOW {selected_tf} open",
+            label=f"When first {selected_reference_tf} closes BELOW {selected_tf} open",
             value=f"{down_probability:.2f}%",
             delta=f"{down_success}/{down_total} cases"
         )
@@ -301,7 +301,7 @@ def display_analysis_results(results):
         default=["up", "down"]
     )
 
-    filtered_results = results[results['m1_direction'].isin(direction_filter)]
+    filtered_results = results[results['reference_direction'].isin(direction_filter)]
     page_size = 1000
     total_pages = (len(filtered_results) + page_size - 1) // page_size
 
@@ -314,7 +314,7 @@ def display_analysis_results(results):
     else:
         display_results = filtered_results
 
-    display_cols = ['tf_datetime', 'tf_open', 'first_m1_close', 'm1_direction', 'hit_target_first', 'probability']
+    display_cols = ['tf_datetime', 'tf_open', 'first_reference_close', 'reference_direction', 'hit_target_first', 'probability']
     st.dataframe(display_results[display_cols])
 
     st.markdown("### Visualization")
@@ -323,7 +323,7 @@ def display_analysis_results(results):
 
     for hour in range(24):
         for direction in ['up', 'down']:
-            hour_direction_mask = (results['hour'] == hour) & (results['m1_direction'] == direction)
+            hour_direction_mask = (results['hour'] == hour) & (results['reference_direction'] == direction)
             if np.any(hour_direction_mask):
                 success = np.sum(results.loc[hour_direction_mask, 'hit_target_first'])
                 total = np.sum(results.loc[hour_direction_mask, 'hit_target_first'] | 
@@ -404,17 +404,16 @@ def display_analysis_results(results):
         file_name=file_name,
         mime="text/csv"
     )
-
 # Main function to run the analysis
 def run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction):
     if not selected_files:
         st.sidebar.error("No files selected. Please select at least one CSV file.")
         return
 
-    # Check if cached data exists for both the selected timeframe and M1 data
+    # Check if cached data exists for both the selected timeframe and reference timeframe
     all_cached = all(
         (CACHE_DIR / get_cache_filename(filename, selected_tf_code)).exists() and
-        (CACHE_DIR / get_cache_filename(filename, "1T")).exists()
+        (CACHE_DIR / get_cache_filename(filename, selected_reference_tf_code)).exists()
         for filename in selected_files
     )
 
@@ -423,16 +422,16 @@ def run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, t
         return
 
     with st.spinner("Loading data..."):
-        # Load and combine M1 data
-        m1_combined = None
+        # Load and combine reference timeframe data
+        reference_combined = None
         for filename in selected_files:
-            m1_cache_path = CACHE_DIR / get_cache_filename(filename, "1T")
-            if m1_cache_path.exists():
-                m1_data = pd.read_pickle(m1_cache_path)
-                if m1_combined is None:
-                    m1_combined = m1_data
+            reference_cache_path = CACHE_DIR / get_cache_filename(filename, selected_reference_tf_code)
+            if reference_cache_path.exists():
+                reference_data = pd.read_pickle(reference_cache_path)
+                if reference_combined is None:
+                    reference_combined = reference_data
                 else:
-                    m1_combined = pd.concat([m1_combined, m1_data])
+                    reference_combined = pd.concat([reference_combined, reference_data])
 
         # Load and combine selected timeframe data
         h1_combined = None
@@ -445,13 +444,13 @@ def run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, t
                 else:
                     h1_combined = pd.concat([h1_combined, h1_data])
 
-    if m1_combined is not None:
-        m1_combined = m1_combined.sort_index()
+    if reference_combined is not None:
+        reference_combined = reference_combined.sort_index()
 
     if h1_combined is not None:
         h1_combined = h1_combined.sort_index()
 
-    results = analyze_candle_batch(h1_combined, m1_combined, tp_percent, sl_percent, enable_end_of_tf_restriction)
+    results = analyze_candle_batch(h1_combined, reference_combined, tp_percent, sl_percent, enable_end_of_tf_restriction)
     st.session_state.results = results
 
     if len(results) == 0:
@@ -459,7 +458,7 @@ def run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, t
     else:
         results['tf_datetime'] = pd.to_datetime(results['tf_datetime'])
         for direction in ["up", "down"]:
-            mask = (results['m1_direction'] == direction)
+            mask = (results['reference_direction'] == direction)
             direction_data = results[mask]
             if len(direction_data) > 0:
                 success_count = np.sum(direction_data['hit_target_first'])
