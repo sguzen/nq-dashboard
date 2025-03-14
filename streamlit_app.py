@@ -66,6 +66,12 @@ selected_tf = st.sidebar.selectbox(
 
 selected_tf_code = resample_mapping[selected_tf]
 
+# Toggle switch for end-of-timeframe restriction
+enable_end_of_tf_restriction = st.sidebar.checkbox(
+    "Classify scenarios as losers if neither target nor stop level is hit by the end of the larger timeframe",
+    value=True  # Default to enabled
+)
+
 # Get available CSV files
 available_files = list(DATA_DIR.glob('*.csv'))
 selected_files = st.sidebar.multiselect(
@@ -169,7 +175,7 @@ def prepare_and_cache_data(selected_files, selected_tf_code, selected_reference_
     st.sidebar.success(f"Processed and cached data for {len(selected_files)} files")
 
 # Function to analyze candle batch
-def analyze_candle_batch(h1_data, m1_data, tp_percent, sl_percent):
+def analyze_candle_batch(h1_data, m1_data, tp_percent, sl_percent, enable_end_of_tf_restriction):
     batch_results = []
 
     for tf_time, tf_row in h1_data.iterrows():
@@ -207,9 +213,9 @@ def analyze_candle_batch(h1_data, m1_data, tp_percent, sl_percent):
                         hit_stop = True
                         break
 
-            # If neither target nor stop level is hit by the end of the larger timeframe, mark it as a loser
-            if not hit_target and not hit_stop:
-                hit_stop = True  # Mark as a loser
+            # Handle end-of-timeframe restriction based on the toggle switch
+            if enable_end_of_tf_restriction and not hit_target and not hit_stop:
+                hit_stop = True  # Mark as a loser if neither target nor stop level is hit by the end of the larger timeframe
 
             hit_target_first = hit_target
             hit_stoploss_first = hit_stop
@@ -400,7 +406,7 @@ def display_analysis_results(results):
     )
 
 # Main function to run the analysis
-def run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, tp_percent, sl_percent):
+def run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction):
     if not selected_files:
         st.sidebar.error("No files selected. Please select at least one CSV file.")
         return
@@ -445,7 +451,7 @@ def run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, t
     if h1_combined is not None:
         h1_combined = h1_combined.sort_index()
 
-    results = analyze_candle_batch(h1_combined, m1_combined, tp_percent, sl_percent)
+    results = analyze_candle_batch(h1_combined, m1_combined, tp_percent, sl_percent, enable_end_of_tf_restriction)
     st.session_state.results = results
 
     if len(results) == 0:
@@ -471,7 +477,7 @@ if prepare_data:
     prepare_and_cache_data(selected_files, selected_tf_code, selected_reference_tf_code)
 
 if start_analysis:
-    run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, tp_percent, sl_percent)
+    run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction)
 
 # Best H1 Candles Analysis
 filter_best_candles = st.sidebar.button("Filter by Best H1 Candles")
@@ -487,7 +493,7 @@ if filter_best_candles:
 
         for hour in range(24):
             for direction in ['up', 'down']:
-                mask = (results['hour'] == hour) & (results['reference_direction'] == direction)
+                mask = (results['hour'] == hour) & (results['m1_direction'] == direction)
                 hour_direction_data = results[mask]
                 if len(hour_direction_data) > 0:
                     success = np.sum(hour_direction_data['hit_target_first'])
@@ -518,7 +524,7 @@ if filter_best_candles:
             for _, row in high_prob_hours.iterrows():
                 hour = row['hour']
                 direction = row['direction']
-                indices = results[(results['hour'] == hour) & (results['reference_direction'] == direction)].index
+                indices = results[(results['hour'] == hour) & (results['m1_direction'] == direction)].index
                 filtered_indices.extend(indices)
 
             high_prob_results = results.loc[filtered_indices]
@@ -526,23 +532,23 @@ if filter_best_candles:
 
             col1, col2 = st.columns(2)
             with col1:
-                filtered_up_data = high_prob_results[high_prob_results['reference_direction'] == "up"]
+                filtered_up_data = high_prob_results[high_prob_results['m1_direction'] == "up"]
                 filtered_up_success = np.sum(filtered_up_data['hit_target_first'])
                 filtered_up_total = np.sum(filtered_up_data['hit_target_first'] | filtered_up_data['hit_stoploss_first'])
                 filtered_up_probability = (filtered_up_success / filtered_up_total * 100) if filtered_up_total > 0 else 0
                 st.metric(
-                    label=f"When first {selected_reference_tf} closes ABOVE {selected_tf} open (filtered)",
+                    label=f"When first M1 closes ABOVE {selected_tf} open (filtered)",
                     value=f"{filtered_up_probability:.2f}%",
                     delta=f"{filtered_up_success}/{filtered_up_total} cases"
                 )
 
             with col2:
-                filtered_down_data = high_prob_results[high_prob_results['reference_direction'] == "down"]
+                filtered_down_data = high_prob_results[high_prob_results['m1_direction'] == "down"]
                 filtered_down_success = np.sum(filtered_down_data['hit_target_first'])
                 filtered_down_total = np.sum(filtered_down_data['hit_target_first'] | filtered_down_data['hit_stoploss_first'])
                 filtered_down_probability = (filtered_down_success / filtered_down_total * 100) if filtered_down_total > 0 else 0
                 st.metric(
-                    label=f"When first {selected_reference_tf} closes BELOW {selected_tf} open (filtered)",
+                    label=f"When first M1 closes BELOW {selected_tf} open (filtered)",
                     value=f"{filtered_down_probability:.2f}%",
                     delta=f"{filtered_down_success}/{filtered_down_total} cases"
                 )
