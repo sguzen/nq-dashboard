@@ -492,7 +492,7 @@ if filter_best_candles:
 
         for hour in range(24):
             for direction in ['up', 'down']:
-                mask = (results['hour'] == hour) & (results['m1_direction'] == direction)
+                mask = (results['hour'] == hour) & (results['reference_direction'] == direction)
                 hour_direction_data = results[mask]
                 if len(hour_direction_data) > 0:
                     success = np.sum(hour_direction_data['hit_target_first'])
@@ -523,7 +523,7 @@ if filter_best_candles:
             for _, row in high_prob_hours.iterrows():
                 hour = row['hour']
                 direction = row['direction']
-                indices = results[(results['hour'] == hour) & (results['m1_direction'] == direction)].index
+                indices = results[(results['hour'] == hour) & (results['reference_direction'] == direction)].index
                 filtered_indices.extend(indices)
 
             high_prob_results = results.loc[filtered_indices]
@@ -531,23 +531,23 @@ if filter_best_candles:
 
             col1, col2 = st.columns(2)
             with col1:
-                filtered_up_data = high_prob_results[high_prob_results['m1_direction'] == "up"]
+                filtered_up_data = high_prob_results[high_prob_results['reference_direction'] == "up"]
                 filtered_up_success = np.sum(filtered_up_data['hit_target_first'])
                 filtered_up_total = np.sum(filtered_up_data['hit_target_first'] | filtered_up_data['hit_stoploss_first'])
                 filtered_up_probability = (filtered_up_success / filtered_up_total * 100) if filtered_up_total > 0 else 0
                 st.metric(
-                    label=f"When first M1 closes ABOVE {selected_tf} open (filtered)",
+                    label=f"When first {selected_reference_tf} closes ABOVE {selected_tf} open (filtered)",
                     value=f"{filtered_up_probability:.2f}%",
                     delta=f"{filtered_up_success}/{filtered_up_total} cases"
                 )
 
             with col2:
-                filtered_down_data = high_prob_results[high_prob_results['m1_direction'] == "down"]
+                filtered_down_data = high_prob_results[high_prob_results['reference_direction'] == "down"]
                 filtered_down_success = np.sum(filtered_down_data['hit_target_first'])
                 filtered_down_total = np.sum(filtered_down_data['hit_target_first'] | filtered_down_data['hit_stoploss_first'])
                 filtered_down_probability = (filtered_down_success / filtered_down_total * 100) if filtered_down_total > 0 else 0
                 st.metric(
-                    label=f"When first M1 closes BELOW {selected_tf} open (filtered)",
+                    label=f"When first {selected_reference_tf} closes BELOW {selected_tf} open (filtered)",
                     value=f"{filtered_down_probability:.2f}%",
                     delta=f"{filtered_down_success}/{filtered_down_total} cases"
                 )
