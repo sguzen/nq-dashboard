@@ -232,6 +232,94 @@ def analyze_candle_batch(batch_df, m5_combined, tp_percent, sl_percent):
             # Get next M5 candles after the first one
             next_candles = m5_candles_in_tf.iloc[1:]
             
+            # Initialize flags
+            hit_target_first = False
+            hit_stoploss_first = False
+            target_reached_by_end_of_hour = False
+            
+            if len(next_candles) > 0:
+                if m5_direction == "up":
+                    # Check if any high >= target or any low <= stop
+                    hits_target = next_candles['high'] >= target_level
+                    hits_stop = next_candles['low'] <= stop_level
+                else:
+                    # Check if any low <= target or any high >= stop
+                    hits_target = next_candles['low'] <= target_level
+                    hits_stop = next_candles['high'] >= stop_level
+                
+                # Check if target was reached at all within the hour
+                target_reached_by_end_of_hour = hits_target.any()
+                
+                if hits_target.any() or hits_stop.any():
+                    # Find first index where either condition is true
+                    first_target_idx = hits_target.idxmax() if hits_target.any() else None
+                    first_stop_idx = hits_stop.idxmax() if hits_stop.any() else None
+                    
+                    # Determine which came first
+                    if first_target_idx is not None and first_stop_idx is not None:
+                        target_time = next_candles.index.get_loc(first_target_idx)
+                        stop_time = next_candles.index.get_loc(first_stop_idx)
+                        hit_target_first = target_time <= stop_time
+                        hit_stoploss_first = stop_time < target_time
+                    elif first_target_idx is not None:
+                        hit_target_first = True
+                    elif first_stop_idx is not None:
+                        hit_stoploss_first = True
+            
+            # If target wasn't reached by the end of the hour, mark as a loser
+            if not target_reached_by_end_of_hour:
+                hit_stoploss_first = True
+            
+            # Add to results
+            batch_results.append({
+                'tf_datetime': tf_time,
+                'tf_open': tf_row['open'],
+                'first_m5_close': first_m5['close'],
+                'm5_direction': m5_direction,
+                'hit_target_first': hit_target_first,
+                'hit_stoploss_first': hit_stoploss_first,
+                'probability': None  # Will calculate later
+            })
+    
+    return pd.DataFrame(batch_results)
+    batch_results = []
+    
+    for tf_time, tf_row in batch_df.iterrows():
+        # Calculate end time based on timeframe
+        if '1H' in tf_time.freq.name:
+            tf_end_time = tf_time + pd.Timedelta(hours=1) - pd.Timedelta(seconds=1)
+        elif '4H' in tf_time.freq.name:
+            tf_end_time = tf_time + pd.Timedelta(hours=4) - pd.Timedelta(seconds=1)
+        elif '5T' in tf_time.freq.name:
+            tf_end_time = tf_time + pd.Timedelta(minutes=5) - pd.Timedelta(seconds=1)
+        elif '15T' in tf_time.freq.name:
+            tf_end_time = tf_time + pd.Timedelta(minutes=15) - pd.Timedelta(seconds=1)
+        elif '30T' in tf_time.freq.name:
+            tf_end_time = tf_time + pd.Timedelta(minutes=30) - pd.Timedelta(seconds=1)
+        else:
+            # Default to 1 hour if frequency is not detected
+            tf_end_time = tf_time + pd.Timedelta(hours=1) - pd.Timedelta(seconds=1)
+            
+        # Get M5 candles within this tf candle - use .loc with slice for performance
+        m5_candles_in_tf = m5_combined.loc[tf_time:tf_end_time]
+        
+        if len(m5_candles_in_tf) > 0:
+            first_m5 = m5_candles_in_tf.iloc[0]
+            
+            # Check direction
+            m5_direction = "up" if first_m5['close'] > tf_row['open'] else "down"
+            
+            # Calculate target and stop levels once
+            if m5_direction == "up":
+                target_level = first_m5['close'] * (1 + tp_percent/100)
+                stop_level = first_m5['close'] * (1 - sl_percent/100)
+            else:
+                target_level = first_m5['close'] * (1 - tp_percent/100)
+                stop_level = first_m5['close'] * (1 + sl_percent/100)
+            
+            # Get next M5 candles after the first one
+            next_candles = m5_candles_in_tf.iloc[1:]
+            
             # Optimization: Use vectorized operations instead of loop when possible
             if len(next_candles) > 0:
                 if m5_direction == "up":
