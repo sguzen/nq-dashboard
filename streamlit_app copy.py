@@ -221,38 +221,19 @@ def analyze_candle_batch(h1_data, reference_data, tp_percent, sl_percent, enable
             hit_target = False
             hit_stop = False
 
-            # Initialize MAE and MFE
-            entry_price = first_reference_candle['close']
-            mae = 0
-            mfe = 0
-
             for _, candle in next_candles.iterrows():
                 if reference_direction == "up":
-                    # Calculate MAE and MFE
-                    current_low = candle['low']
-                    current_high = candle['high']
-                    mae = min(mae, (current_low - entry_price) / entry_price * 100)
-                    mfe = max(mfe, (current_high - entry_price) / entry_price * 100)
-
-                    # Check if target or stop level is hit
-                    if current_high >= target_level:
+                    if candle['high'] >= target_level:
                         hit_target = True
                         break
-                    if current_low <= stop_level:
+                    if candle['low'] <= stop_level:
                         hit_stop = True
                         break
                 else:
-                    # Calculate MAE and MFE
-                    current_low = candle['low']
-                    current_high = candle['high']
-                    mae = min(mae, (entry_price - current_high) / entry_price * 100)
-                    mfe = max(mfe, (entry_price - current_low) / entry_price * 100)
-
-                    # Check if target or stop level is hit
-                    if current_low <= target_level:
+                    if candle['low'] <= target_level:
                         hit_target = True
                         break
-                    if current_high >= stop_level:
+                    if candle['high'] >= stop_level:
                         hit_stop = True
                         break
 
@@ -271,8 +252,6 @@ def analyze_candle_batch(h1_data, reference_data, tp_percent, sl_percent, enable
                 'hit_target_first': hit_target_first,
                 'hit_stoploss_first': hit_stoploss_first,
                 'day_of_week': tf_time.strftime('%A'),  # Add day of the week
-                'mae': mae,
-                'mfe': mfe,
                 'probability': None
             })
 
@@ -325,21 +304,8 @@ def display_analysis_results(results):
         delta=f"{overall_success}/{overall_total} cases"
     )
 
-    # Overall MAE and MFE
-    overall_mae = results['mae'].mean()
-    overall_mfe = results['mfe'].mean()
-
-    st.metric(
-        label="Overall Average MAE",
-        value=f"{overall_mae:.2f}%"
-    )
-    st.metric(
-        label="Overall Average MFE",
-        value=f"{overall_mfe:.2f}%"
-    )
-
     # Day-of-week breakdown
-    st.markdown("### Success Rate, MAE, and MFE by Day of the Week")
+    st.markdown("### Success Rate by Day of the Week")
     day_of_week_data = []
 
     for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']:
@@ -349,56 +315,34 @@ def display_analysis_results(results):
             day_success = np.sum(day_data['hit_target_first'])
             day_total = np.sum(day_data['hit_target_first'] | day_data['hit_stoploss_first'])
             day_probability = (day_success / day_total * 100) if day_total > 0 else 0
-            day_mae = day_data['mae'].mean()
-            day_mfe = day_data['mfe'].mean()
             day_of_week_data.append({
                 'day_of_week': day,
                 'success': day_success,
                 'total': day_total,
-                'probability': day_probability,
-                'mae': day_mae,
-                'mfe': day_mfe
+                'probability': day_probability
             })
 
     day_of_week_df = pd.DataFrame(day_of_week_data)
 
     if not day_of_week_df.empty:
         # Display table
-        st.dataframe(day_of_week_df[['day_of_week', 'probability', 'mae', 'mfe', 'success', 'total']])
+        st.dataframe(day_of_week_df[['day_of_week', 'probability', 'success', 'total']])
 
         # Visualization
         fig = go.Figure()
         fig.add_trace(go.Bar(
             x=day_of_week_df['day_of_week'],
             y=day_of_week_df['probability'],
-            name='Probability',
-            marker_color='blue',
-            opacity=0.7,
             text=day_of_week_df['success'].astype(str) + '/' + day_of_week_df['total'].astype(str),
-            hoverinfo='text'
-        ))
-        fig.add_trace(go.Bar(
-            x=day_of_week_df['day_of_week'],
-            y=day_of_week_df['mae'],
-            name='MAE',
-            marker_color='red',
-            opacity=0.7,
-            hoverinfo='y'
-        ))
-        fig.add_trace(go.Bar(
-            x=day_of_week_df['day_of_week'],
-            y=day_of_week_df['mfe'],
-            name='MFE',
-            marker_color='green',
-            opacity=0.7,
-            hoverinfo='y'
+            hoverinfo='text',
+            marker_color='blue',
+            opacity=0.7
         ))
 
         fig.update_layout(
-            title='Performance by Day of the Week',
+            title='Success Probability by Day of the Week',
             xaxis_title='Day of the Week',
-            yaxis_title='Value (%)',
-            barmode='group',
+            yaxis_title='Probability (%)',
             height=500
         )
 
@@ -427,7 +371,7 @@ def display_analysis_results(results):
     else:
         display_results = filtered_results
 
-    display_cols = ['tf_datetime', 'tf_open', 'first_reference_close', 'reference_direction', 'hit_target_first', 'mae', 'mfe', 'probability']
+    display_cols = ['tf_datetime', 'tf_open', 'first_reference_close', 'reference_direction', 'hit_target_first', 'probability']
     st.dataframe(display_results[display_cols])
 
     # Hourly visualization (existing code)
