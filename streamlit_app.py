@@ -232,34 +232,34 @@ def analyze_candle_batch(h1_data, reference_data, tp_percent, sl_percent, enable
             entry_price = first_reference_candle['close']
             mae = 0
             mfe = 0
+            
+            # Calculate MAE and MFE based on the current H1 candle (tf_row)
+            if reference_direction == "up":
+                # For "up" direction, MAE is the lowest point compared to entry
+                mae = ((tf_row['low'] - entry_price) / entry_price * 100)
+                # For "up" direction, MFE is the highest point compared to entry
+                mfe = ((tf_row['high'] - entry_price) / entry_price * 100)
+            else:
+                # For "down" direction, MAE is the highest point compared to entry
+                mae = ((entry_price - tf_row['high']) / entry_price * 100)
+                # For "down" direction, MFE is the lowest point compared to entry
+                mfe = ((entry_price - tf_row['low']) / entry_price * 100)
 
             for _, candle in next_candles.iterrows():
                 if reference_direction == "up":
-                    # Calculate MAE and MFE
-                    current_low = candle['low']
-                    current_high = candle['high']
-                    mae = min(mae, (current_low - entry_price) / entry_price * 100)
-                    mfe = max(mfe, (current_high - entry_price) / entry_price * 100)
-
                     # Check if target or stop level is hit
-                    if current_high >= target_level:
+                    if candle['high'] >= target_level:
                         hit_target = True
                         break
-                    if current_low <= stop_level:
+                    if candle['low'] <= stop_level:
                         hit_stop = True
                         break
                 else:
-                    # Calculate MAE and MFE
-                    current_low = candle['low']
-                    current_high = candle['high']
-                    mae = min(mae, (entry_price - current_high) / entry_price * 100)
-                    mfe = max(mfe, (entry_price - current_low) / entry_price * 100)
-
                     # Check if target or stop level is hit
-                    if current_low <= target_level:
+                    if candle['low'] <= target_level:
                         hit_target = True
                         break
-                    if current_high >= stop_level:
+                    if candle['high'] >= stop_level:
                         hit_stop = True
                         break
 
