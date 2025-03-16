@@ -85,6 +85,13 @@ selected_files = st.sidebar.multiselect(
     options=[file.name for file in available_files]
 )
 
+# Multiselect widget for days of the week
+selected_days = st.sidebar.multiselect(
+    "Select days of the week to include in the analysis",
+    options=['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Sunday'],
+    default=['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Sunday']  # Default to weekdays
+)
+
 # Function to get cache filename
 def get_cache_filename(csv_filename, timeframe_code):
     base_name = os.path.splitext(csv_filename)[0]
@@ -342,7 +349,7 @@ def display_analysis_results(results):
     st.markdown("### Success Rate, MAE, and MFE by Day of the Week")
     day_of_week_data = []
 
-    for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']:
+    for day in results['day_of_week'].unique():
         day_mask = (results['day_of_week'] == day)
         day_data = results[day_mask]
         if len(day_data) > 0:
@@ -521,7 +528,7 @@ def display_analysis_results(results):
     )
 
 # Main function to run the analysis
-def run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction, enable_dynamic_sl):
+def run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction, enable_dynamic_sl, selected_days):
     if not selected_files:
         st.sidebar.error("No files selected. Please select at least one CSV file.")
         return
@@ -567,6 +574,11 @@ def run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, t
         h1_combined = h1_combined.sort_index()
 
     results = analyze_candle_batch(h1_combined, reference_combined, tp_percent, sl_percent, enable_end_of_tf_restriction, enable_dynamic_sl)
+    
+    # Filter results based on selected days
+    if selected_days:
+        results = results[results['day_of_week'].isin(selected_days)]
+
     st.session_state.results = results
 
     if len(results) == 0:
@@ -592,7 +604,7 @@ if prepare_data:
     prepare_and_cache_data(selected_files, selected_tf_code, selected_reference_tf_code)
 
 if start_analysis:
-    run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction, enable_dynamic_sl)
+    run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction, enable_dynamic_sl, selected_days)
 
 # Best H1 Candles Analysis
 filter_best_candles = st.sidebar.button("Filter by Best H1 Candles")
@@ -620,12 +632,18 @@ if filter_best_candles:
                             'direction': direction,
                             'success': success,
                             'total': total,
-                            'probability': probability,
+                            'probability': probability,  # Ensure this key is included
                             'sample_size': len(hour_direction_data)
                         })
 
+        # Create DataFrame from the list
         best_hours_df = pd.DataFrame(best_hours_data)
-        high_prob_hours = best_hours_df[best_hours_df['probability'] > 60].sort_values('probability', ascending=False)
+
+        # Filter for hours with probability > 60%
+        if 'probability' in best_hours_df.columns:  # Check if the column exists
+            high_prob_hours = best_hours_df[best_hours_df['probability'] > 60].sort_values('probability', ascending=False)
+        else:
+            st.error("Probability column not found in the results. Please check the data preparation step.")
 
         if len(high_prob_hours) > 0:
             st.markdown("### Hourly Candles with > 60% Probability")
