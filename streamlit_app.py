@@ -29,7 +29,7 @@ a XX% move in the opposite direction.
 
 # Sidebar parameters
 tp_percent = st.sidebar.number_input("Take Profit %", value=0.1, step=0.05, format="%.2f")
-sl_percent = st.sidebar.number_input("Stop Loss %", value=0.2, step=0.05, format="%.2f")
+sl_percent = st.sidebar.number_input("Stop Loss %", value=0.3, step=0.05, format="%.2f")
 
 # Toggle switch for dynamic SL calculation
 enable_dynamic_sl = st.sidebar.checkbox(
@@ -75,7 +75,7 @@ selected_tf_code = resample_mapping[selected_tf]
 # Toggle switch for end-of-timeframe restriction
 enable_end_of_tf_restriction = st.sidebar.checkbox(
     "Classify scenarios as losers if neither target nor stop level is hit by the end of the larger timeframe",
-    value=True  # Default to enabled
+    value=False  # Default to disabled
 )
 
 # Get available CSV files
@@ -188,7 +188,7 @@ def prepare_and_cache_data(selected_files, selected_tf_code, selected_reference_
     st.sidebar.success(f"Processed and cached data for {len(selected_files)} files")
 
 # Function to analyze candle batch
-def analyze_candle_batch(h1_data, reference_data, tp_percent, sl_percent, enable_end_of_tf_restriction, enable_dynamic_sl):
+def analyze_candle_batch(h1_data, reference_data, selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction, enable_dynamic_sl):
     batch_results = []
 
     for i, (tf_time, tf_row) in enumerate(h1_data.iterrows()):
@@ -197,91 +197,97 @@ def analyze_candle_batch(h1_data, reference_data, tp_percent, sl_percent, enable
 
         if len(reference_candles_in_tf) > 0:
             first_reference_candle = reference_candles_in_tf.iloc[0]
-            reference_direction = "up" if first_reference_candle['close'] > first_reference_candle['open'] else "down"
+            # Check if the first reference candle's size is less than 0.16%
+            # If m5 is not selected, this calculation will be done for no purpose, refactor it
+            candle_size = first_reference_candle['high'] - first_reference_candle['low']
+            candle_size_percentage = (candle_size / first_reference_candle['open']) * 100
 
-            # Calculate target level
-            if reference_direction == "up":
-                target_level = first_reference_candle['close'] * (1 + tp_percent / 100)
-            else:
-                target_level = first_reference_candle['close'] * (1 - tp_percent / 100)
+            if (selected_reference_tf_code == '5T' and candle_size_percentage < 0.15) or selected_reference_tf_code != '5T':       
+                reference_direction = "up" if first_reference_candle['close'] > first_reference_candle['open'] else "down"
 
-            # Calculate stop loss level
-            if enable_dynamic_sl and i > 0:  # Ensure there is a previous candle
-                previous_candle = h1_data.iloc[i - 1]
-                previous_candle_range = previous_candle['high'] - previous_candle['low']
-                dynamic_sl_level = first_reference_candle['close'] - (0.5 * previous_candle_range) if reference_direction == "up" else first_reference_candle['close'] + (0.5 * previous_candle_range)
-                user_sl_level = first_reference_candle['close'] * (1 - sl_percent / 100) if reference_direction == "up" else first_reference_candle['close'] * (1 + sl_percent / 100)
-
-                # Use the closer of the two SL levels
+                # Calculate target level
                 if reference_direction == "up":
-                    stop_level = max(dynamic_sl_level, user_sl_level)
+                    target_level = first_reference_candle['close'] * (1 + tp_percent / 100)
                 else:
-                    stop_level = min(dynamic_sl_level, user_sl_level)
-            else:
-                # Use the user-defined SL level
+                    target_level = first_reference_candle['close'] * (1 - tp_percent / 100)
+
+                # Calculate stop loss level
+                if enable_dynamic_sl and i > 0:  # Ensure there is a previous candle
+                    previous_candle = h1_data.iloc[i - 1]
+                    previous_candle_range = previous_candle['high'] - previous_candle['low']
+                    dynamic_sl_level = first_reference_candle['close'] - (0.5 * previous_candle_range) if reference_direction == "up" else first_reference_candle['close'] + (0.5 * previous_candle_range)
+                    user_sl_level = first_reference_candle['close'] * (1 - sl_percent / 100) if reference_direction == "up" else first_reference_candle['close'] * (1 + sl_percent / 100)
+
+                    # Use the closer of the two SL levels
+                    if reference_direction == "up":
+                        stop_level = max(dynamic_sl_level, user_sl_level)
+                    else:
+                        stop_level = min(dynamic_sl_level, user_sl_level)
+                else:
+                    # Use the user-defined SL level
+                    if reference_direction == "up":
+                        stop_level = first_reference_candle['close'] * (1 - sl_percent / 100)
+                    else:
+                        stop_level = first_reference_candle['close'] * (1 + sl_percent / 100)
+
+                next_candles = reference_candles_in_tf.iloc[1:]
+                hit_target = False
+                hit_stop = False
+
+                # Initialize MAE and MFE
+                entry_price = first_reference_candle['close']
+                mae = 0
+                mfe = 0
+                
+                # Calculate MAE and MFE based on the current H1 candle (tf_row)
                 if reference_direction == "up":
-                    stop_level = first_reference_candle['close'] * (1 - sl_percent / 100)
+                    # For "up" direction, MAE is the lowest point compared to entry
+                    mae = ((tf_row['low'] - entry_price) / entry_price * 100)
+                    # For "up" direction, MFE is the highest point compared to entry
+                    mfe = ((tf_row['high'] - entry_price) / entry_price * 100)
                 else:
-                    stop_level = first_reference_candle['close'] * (1 + sl_percent / 100)
+                    # For "down" direction, MAE is the highest point compared to entry
+                    mae = ((entry_price - tf_row['high']) / entry_price * 100)
+                    # For "down" direction, MFE is the lowest point compared to entry
+                    mfe = ((entry_price - tf_row['low']) / entry_price * 100)
 
-            next_candles = reference_candles_in_tf.iloc[1:]
-            hit_target = False
-            hit_stop = False
+                for _, candle in next_candles.iterrows():
+                    if reference_direction == "up":
+                        # Check if target or stop level is hit
+                        if candle['high'] >= target_level:
+                            hit_target = True
+                            break
+                        if candle['low'] <= stop_level:
+                            hit_stop = True
+                            break
+                    else:
+                        # Check if target or stop level is hit
+                        if candle['low'] <= target_level:
+                            hit_target = True
+                            break
+                        if candle['high'] >= stop_level:
+                            hit_stop = True
+                            break
 
-            # Initialize MAE and MFE
-            entry_price = first_reference_candle['close']
-            mae = 0
-            mfe = 0
-            
-            # Calculate MAE and MFE based on the current H1 candle (tf_row)
-            if reference_direction == "up":
-                # For "up" direction, MAE is the lowest point compared to entry
-                mae = ((tf_row['low'] - entry_price) / entry_price * 100)
-                # For "up" direction, MFE is the highest point compared to entry
-                mfe = ((tf_row['high'] - entry_price) / entry_price * 100)
-            else:
-                # For "down" direction, MAE is the highest point compared to entry
-                mae = ((entry_price - tf_row['high']) / entry_price * 100)
-                # For "down" direction, MFE is the lowest point compared to entry
-                mfe = ((entry_price - tf_row['low']) / entry_price * 100)
+                # Handle end-of-timeframe restriction based on the toggle switch
+                if enable_end_of_tf_restriction and not hit_target and not hit_stop:
+                    hit_stop = True  # Mark as a loser if neither target nor stop level is hit by the end of the larger timeframe
 
-            for _, candle in next_candles.iterrows():
-                if reference_direction == "up":
-                    # Check if target or stop level is hit
-                    if candle['high'] >= target_level:
-                        hit_target = True
-                        break
-                    if candle['low'] <= stop_level:
-                        hit_stop = True
-                        break
-                else:
-                    # Check if target or stop level is hit
-                    if candle['low'] <= target_level:
-                        hit_target = True
-                        break
-                    if candle['high'] >= stop_level:
-                        hit_stop = True
-                        break
+                hit_target_first = hit_target
+                hit_stoploss_first = hit_stop
 
-            # Handle end-of-timeframe restriction based on the toggle switch
-            if enable_end_of_tf_restriction and not hit_target and not hit_stop:
-                hit_stop = True  # Mark as a loser if neither target nor stop level is hit by the end of the larger timeframe
-
-            hit_target_first = hit_target
-            hit_stoploss_first = hit_stop
-
-            batch_results.append({
-                'tf_datetime': tf_time,
-                'tf_open': tf_row['open'],
-                'first_reference_close': first_reference_candle['close'],
-                'reference_direction': reference_direction,
-                'hit_target_first': hit_target_first,
-                'hit_stoploss_first': hit_stoploss_first,
-                'day_of_week': tf_time.strftime('%A'),  # Add day of the week
-                'mae': mae,
-                'mfe': mfe,
-                'probability': None
-            })
+                batch_results.append({
+                    'tf_datetime': tf_time,
+                    'tf_open': tf_row['open'],
+                    'first_reference_close': first_reference_candle['close'],
+                    'reference_direction': reference_direction,
+                    'hit_target_first': hit_target_first,
+                    'hit_stoploss_first': hit_stoploss_first,
+                    'day_of_week': tf_time.strftime('%A'),  # Add day of the week
+                    'mae': mae,
+                    'mfe': mfe,
+                    'probability': None
+                })
 
     return pd.DataFrame(batch_results)
 
@@ -573,7 +579,7 @@ def run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, t
     if h1_combined is not None:
         h1_combined = h1_combined.sort_index()
 
-    results = analyze_candle_batch(h1_combined, reference_combined, tp_percent, sl_percent, enable_end_of_tf_restriction, enable_dynamic_sl)
+    results = analyze_candle_batch(h1_combined, reference_combined,selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction, enable_dynamic_sl)
     
     # Filter results based on selected days
     if selected_days:
