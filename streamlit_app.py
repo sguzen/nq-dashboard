@@ -233,6 +233,7 @@ def analyze_candle_batch(h1_data, reference_data, selected_reference_tf_code, tp
                 next_candles = reference_candles_in_tf.iloc[1:]
                 hit_target = False
                 hit_stop = False
+                time_to_hit = None  # Initialize time_to_hit
 
                 # Initialize MAE and MFE
                 entry_price = first_reference_candle['close']
@@ -256,22 +257,27 @@ def analyze_candle_batch(h1_data, reference_data, selected_reference_tf_code, tp
                         # Check if target or stop level is hit
                         if candle['high'] >= target_level:
                             hit_target = True
+                            time_to_hit = (candle.name - tf_time).total_seconds() / 60  # Time in minutes
                             break
                         if candle['low'] <= stop_level:
                             hit_stop = True
+                            time_to_hit = (candle.name - tf_time).total_seconds() / 60  # Time in minutes
                             break
                     else:
                         # Check if target or stop level is hit
                         if candle['low'] <= target_level:
                             hit_target = True
+                            time_to_hit = (candle.name - tf_time).total_seconds() / 60  # Time in minutes
                             break
                         if candle['high'] >= stop_level:
                             hit_stop = True
+                            time_to_hit = (candle.name - tf_time).total_seconds() / 60  # Time in minutes
                             break
 
                 # Handle end-of-timeframe restriction based on the toggle switch
                 if enable_end_of_tf_restriction and not hit_target and not hit_stop:
                     hit_stop = True  # Mark as a loser if neither target nor stop level is hit by the end of the larger timeframe
+                    time_to_hit = (tf_end_time - tf_time).total_seconds() / 60  # Time in minutes
 
                 hit_target_first = hit_target
                 hit_stoploss_first = hit_stop
@@ -286,6 +292,7 @@ def analyze_candle_batch(h1_data, reference_data, selected_reference_tf_code, tp
                     'day_of_week': tf_time.strftime('%A'),  # Add day of the week
                     'mae': mae,
                     'mfe': mfe,
+                    'time_to_hit': time_to_hit,  # Add time_to_hit column
                     'probability': None
                 })
 
@@ -349,6 +356,14 @@ def display_analysis_results(results):
     st.metric(
         label="Overall Average MFE",
         value=f"{overall_mfe:.2f}%"
+    )
+
+    # Overall average time to hit target or stop
+    overall_avg_time = results['time_to_hit'].mean()
+
+    st.metric(
+        label="Overall Average Time to Hit Target or Stop",
+        value=f"{overall_avg_time:.2f} minutes"
     )
 
     # Day-of-week breakdown
