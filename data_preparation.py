@@ -1,6 +1,9 @@
 import streamlit as st
 import pandas as pd
 import utils
+import numpy as np
+import plotly.graph_objects as go
+import display # refactor this, we don't need this library here
 
 # Function to prepare and cache data
 def prepare_and_cache_data(selected_files, selected_tf_code, selected_reference_tf_code):
@@ -118,4 +121,59 @@ def check_results_available():
         return False
     return True
 
-    
+def calculate_best_hours_data(results):
+    results['hour'] = results['tf_datetime'].dt.hour
+    best_hours_data = []
+
+    for hour in range(24):
+        for direction in ['up', 'down']:
+            mask = (results['hour'] == hour) & (results['reference_direction'] == direction)
+            hour_direction_data = results[mask]
+            if len(hour_direction_data) > 0:
+                success = np.sum(hour_direction_data['hit_target_first'])
+                total = np.sum(hour_direction_data['hit_target_first'] | hour_direction_data['hit_stoploss_first'])
+                if total >= 30:  # Minimum sample size for statistical significance
+                    probability = (success / total) * 100
+                    best_hours_data.append({
+                        'hour': hour,
+                        'direction': direction,
+                        'success': success,
+                        'total': total,
+                        'probability': probability,
+                        'sample_size': len(hour_direction_data)
+                    })
+
+    return pd.DataFrame(best_hours_data)
+
+def filter_high_probability_hours(best_hours_df):
+    if 'probability' in best_hours_df.columns:
+        return best_hours_df[best_hours_df['probability'] > 60].sort_values('probability', ascending=False)
+    else:
+        st.error("Probability column not found in the results. Please check the data preparation step.")
+        return pd.DataFrame()
+
+def get_filtered_indices(results, high_prob_hours):
+    filtered_indices = []
+    for _, row in high_prob_hours.iterrows():
+        hour = row['hour']
+        direction = row['direction']
+        indices = results[(results['hour'] == hour) & (results['reference_direction'] == direction)].index
+        filtered_indices.extend(indices)
+    return results.loc[filtered_indices]
+
+def filter_best_candles(selected_reference_tf, selected_tf, selected_tf_code):
+    if not check_results_available():
+        return
+
+    results = st.session_state.results
+    st.subheader("Best Hourly Candles Analysis (Above 60% Probability)")
+
+    best_hours_df = calculate_best_hours_data(results)
+    high_prob_hours = filter_high_probability_hours(best_hours_df)
+    display.display_high_probability_hours(high_prob_hours)
+
+    if len(high_prob_hours) > 0:
+        high_prob_results = get_filtered_indices(results, high_prob_hours)
+        display.display_recalculated_metrics(high_prob_results, selected_reference_tf, selected_tf)
+        display.visualize_high_probability_hours(high_prob_hours)
+        utils.download_high_probability_results(high_prob_results, selected_tf_code)    

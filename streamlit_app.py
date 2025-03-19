@@ -167,6 +167,5 @@ if prepare_data:
 if start_analysis:
     run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction, enable_dynamic_sl, selected_days)
 
-
 if filter_best_candles:
     analysis.filter_best_candles(selected_reference_tf, selected_tf, selected_tf_code)
