@@ -19,7 +19,7 @@ st.title("Financial Price Movement Probability Analysis")
 st.markdown("""
 This app analyzes financial futures data to determine probability of price movements.
 For each H1 candle, it checks if the first M5 candle closes above the H1 opening price,
-then calculates the probability of a 0.1% move in the direction of the M5 close before
+then calculates the probability of a 0.1% move against the direction of the M5 close before
 a XX% move in the opposite direction.
 """)
 
@@ -34,10 +34,11 @@ enable_dynamic_sl = st.sidebar.checkbox(
 )
 
 # Reference timeframe selection
-reference_timeframe_options = ["1 Minute (M1)", "5 Minutes (M5)", "15 Minutes (M15)", "30 Minutes (M30)"]
+reference_timeframe_options = ["1 Minute (M1)", "5 Minutes (M5)","10 Minutes (M10)", "15 Minutes (M15)", "30 Minutes (M30)"]
 reference_timeframe_mapping = {
     "1 Minute (M1)": "1T",
     "5 Minutes (M5)": "5T",
+    "10 Minutes (M10)": "10T",
     "15 Minutes (M15)": "15T",
     "30 Minutes (M30)": "30T"
 }
@@ -87,6 +88,21 @@ selected_days = st.sidebar.multiselect(
     options=['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Sunday'],
     default=['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Sunday']  # Default to weekdays
 )
+
+# Add a multi-select dropdown for hour selection
+#st.sidebar.header("Filter Hourly Candles by Specific Hours")
+#selected_hours = st.sidebar.multiselect(
+#    "Select Hours to Include",
+#    options=list(range(24)),  # Hours from 0 to 23
+#    default=[2, 5, 8]  # Default selected hours (2 AM, 5 AM, 8 AM)
+#)
+
+# Filter the h1_data based on the selected hours
+#if selected_hours:
+ #   filtered_h1_data = selected_tf_code[selected_tf_code['datetime'].dt.hour.isin(selected_hours)]
+#else:
+ #   filtered_h1_data = selected_tf_code  # If no hours are selected, use all data
+
 
 prepare_data = st.sidebar.button("Prepare & Cache Data")
 start_analysis = st.sidebar.button("Start Analysis")
@@ -168,4 +184,4 @@ if start_analysis:
     run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction, enable_dynamic_sl, selected_days)
 
 if filter_best_candles:
-    analysis.filter_best_candles(selected_reference_tf, selected_tf, selected_tf_code)
+    data_preparation.filter_best_candles(selected_reference_tf, selected_tf)
