@@ -13,6 +13,7 @@ import data_preparation
 import analysis
 import display
 
+
 # Streamlit configuration
 st.set_page_config(layout="wide", page_title="Financial Data Analysis")
 st.title("Financial Price Movement Probability Analysis")
@@ -28,10 +29,10 @@ tp_percent = st.sidebar.number_input("Take Profit %", value=0.1, step=0.05, form
 sl_percent = st.sidebar.number_input("Stop Loss %", value=0.3, step=0.05, format="%.2f")
 
 # Toggle switch for dynamic SL calculation
-enable_dynamic_sl = st.sidebar.checkbox(
-    "Use dynamic stop loss (50% of previous hourly candle or user-defined SL, whichever is closer)",
-    value=False  # Default to disabled
-)
+#enable_dynamic_sl = st.sidebar.checkbox(
+ #   "Use dynamic stop loss (50% of previous hourly candle or user-defined SL, whichever is closer)",
+  #  value=False  # Default to disabled
+#)
 
 # Reference timeframe selection
 reference_timeframe_options = ["1 Minute (M1)", "5 Minutes (M5)","10 Minutes (M10)", "15 Minutes (M15)", "30 Minutes (M30)"]
@@ -75,6 +76,12 @@ enable_end_of_tf_restriction = st.sidebar.checkbox(
     value=False  # Default to disabled
 )
 
+# Toggle switch for trade direction
+enable_reverse_calculation = st.sidebar.checkbox(
+    "Calculate the probabilities with fading the reference candle",
+    value=False  # Default to disabled
+)
+
 # Get available CSV files
 available_files = list(utils.DATA_DIR.glob('*.csv'))
 selected_files = st.sidebar.multiselect(
@@ -109,7 +116,7 @@ start_analysis = st.sidebar.button("Start Analysis")
 filter_best_candles = st.sidebar.button("Filter by Best H1 Candles")
 
 # Main function to run the analysis
-def run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction, enable_dynamic_sl, selected_days):
+def run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction, enable_reverse_calculation, selected_days):
     if not selected_files:
         st.sidebar.error("No files selected. Please select at least one CSV file.")
         return
@@ -154,7 +161,7 @@ def run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, t
     if h1_combined is not None:
         h1_combined = h1_combined.sort_index()
 
-    results = analysis.analyze_candle_batch(h1_combined, reference_combined,selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction, enable_dynamic_sl)
+    results = analysis.analyze_candle_batch(h1_combined, reference_combined,selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction,enable_reverse_calculation)
     
     # Filter results based on selected days
     if selected_days:
@@ -181,7 +188,7 @@ if prepare_data:
     data_preparation.prepare_and_cache_data(selected_files, selected_tf_code, selected_reference_tf_code)
 
 if start_analysis:
-    run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction, enable_dynamic_sl, selected_days)
+    run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction, enable_reverse_calculation, selected_days)
 
 if filter_best_candles:
     data_preparation.filter_best_candles(selected_reference_tf, selected_tf,selected_tf_code)
