@@ -130,7 +130,6 @@ def analyze_candle_batch(h1_data, reference_data, selected_reference_tf_code, tp
                     'hit_target_first': hit_target,
                     'hit_stoploss_first': hit_stop,
                     'day_of_week': tf_time.strftime('%A'),
-                    'hour_of_day': tf_time.strftime("%H"),  # 24-hour format
                     'mae': mae,
                     'mfe': mfe,
                     'time_to_hit': time_to_hit,

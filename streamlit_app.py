@@ -13,6 +13,7 @@ import data_preparation
 import analysis
 import display
 
+
 # Streamlit configuration
 st.set_page_config(layout="wide", page_title="Financial Data Analysis")
 st.title("Financial Price Movement Probability Analysis")
@@ -28,6 +29,10 @@ tp_percent = st.sidebar.number_input("Take Profit %", value=0.1, step=0.05, form
 sl_percent = st.sidebar.number_input("Stop Loss %", value=0.3, step=0.05, format="%.2f")
 
 # Toggle switch for dynamic SL calculation
+#enable_dynamic_sl = st.sidebar.checkbox(
+ #   "Use dynamic stop loss (50% of previous hourly candle or user-defined SL, whichever is closer)",
+  #  value=False  # Default to disabled
+#)
 #enable_dynamic_sl = st.sidebar.checkbox(
  #   "Use dynamic stop loss (50% of previous hourly candle or user-defined SL, whichever is closer)",
   #  value=False  # Default to disabled
@@ -74,6 +79,18 @@ selected_tf_code = "1H"
 # Toggle switch for end-of-timeframe restriction
 enable_end_of_tf_restriction = st.sidebar.checkbox(
     "Classify scenarios as losers if neither target nor stop level is hit by the end of the larger timeframe",
+    value=False  # Default to disabled
+)
+
+# Toggle switch for trade direction
+enable_reverse_calculation = st.sidebar.checkbox(
+    "Calculate the probabilities with fading the reference candle",
+    value=False  # Default to disabled
+)
+
+# Toggle switch for trade direction
+enable_reverse_calculation = st.sidebar.checkbox(
+    "Calculate the probabilities with fading the reference candle",
     value=False  # Default to disabled
 )
 
