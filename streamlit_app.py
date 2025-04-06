@@ -28,15 +28,6 @@ a XX% move in the opposite direction.
 tp_percent = st.sidebar.number_input("Take Profit %", value=0.1, step=0.05, format="%.2f")
 sl_percent = st.sidebar.number_input("Stop Loss %", value=0.3, step=0.05, format="%.2f")
 
-# Toggle switch for dynamic SL calculation
-#enable_dynamic_sl = st.sidebar.checkbox(
- #   "Use dynamic stop loss (50% of previous hourly candle or user-defined SL, whichever is closer)",
-  #  value=False  # Default to disabled
-#)
-#enable_dynamic_sl = st.sidebar.checkbox(
- #   "Use dynamic stop loss (50% of previous hourly candle or user-defined SL, whichever is closer)",
-  #  value=False  # Default to disabled
-#)
 
 # Reference timeframe selection
 reference_timeframe_options = ["1 Minute (M1)", "5 Minutes (M5)","10 Minutes (M10)", "15 Minutes (M15)", "30 Minutes (M30)"]
@@ -88,18 +79,6 @@ enable_reverse_calculation = st.sidebar.checkbox(
     value=False  # Default to disabled
 )
 
-# Toggle switch for trade direction
-enable_reverse_calculation = st.sidebar.checkbox(
-    "Calculate the probabilities with fading the reference candle",
-    value=False  # Default to disabled
-)
-
-# Toggle switch for trade direction
-enable_reverse_calculation = st.sidebar.checkbox(
-    "Calculate the probabilities with fading the reference candle",
-    value=False  # Default to disabled
-)
-
 # Multiselect widget for days of the week
 selected_days = st.sidebar.multiselect(
     "Select days of the week to include in the analysis",
@@ -120,8 +99,6 @@ def run_analysis(selected_tf_code, selected_reference_tf_code, tp_percent, sl_pe
         (utils.CACHE_DIR / utils.get_cache_filename(filename, selected_reference_tf_code)).exists()
         for filename in selected_files
     )
-
-    
 
     with st.spinner("Loading data..."):
         # Load and combine reference timeframe data
