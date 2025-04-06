@@ -4,11 +4,12 @@ import utils
 import numpy as np
 import plotly.graph_objects as go
 import display # refactor this, we don't need this library here
+import traceback 
 
-# Function to prepare and cache data
-def prepare_and_cache_data(selected_files, selected_tf_code, selected_reference_tf_code):
+def prepare_and_cache_data(selected_tf_code, selected_reference_tf_code):
+    selected_files = list(utils.DATA_DIR.glob('*.csv'))
     if not selected_files:
-        st.sidebar.error("No files selected. Please select at least one CSV file.")
+        st.sidebar.error("No files found in the directory")
         return
 
     prep_progress = st.sidebar.progress(0)
@@ -18,22 +19,51 @@ def prepare_and_cache_data(selected_files, selected_tf_code, selected_reference_
         prep_status.text(f"Processing {filename}... ({i+1}/{len(selected_files)})")
         try:
             file_path = utils.DATA_DIR / filename
-            df = pd.read_csv(file_path, delimiter=';')
+            df = pd.read_csv(file_path,delimiter=',',header=None,skiprows=1,names=['Datetime', 'Open', 'High', 'Low', 'Close', 'Extra'],usecols=['Datetime', 'Open', 'High', 'Low', 'Close'])
             df.columns = df.columns.str.strip()
 
-            expected_columns = ['date', 'timestamp', 'open', 'high', 'low', 'close', 'volume', 'symbol', 'year']
-            missing_columns = [col for col in expected_columns if not any(existing_col.lower() == col.lower() for existing_col in df.columns)]
+            df['Datetime'] = df['Datetime'].astype(str).str.replace(r'\s+[+-][\d:]+$', '', regex=True)
+
+            # Print sample to verify timezone removal
+            print("After timezone removal (first 3):")
+            print(df['Datetime'].head(3))
+
+            # Convert to datetime - now without timezone complications
+            df['Datetime'] = pd.to_datetime(
+                df['Datetime'],
+                format='%m/%d/%Y %I:%M:%S %p',  # Format without timezone
+                errors='coerce'
+            )
+
+            # Verify conversion success
+            if df['Datetime'].isnull().any():
+                print(f"Warning: {df['Datetime'].isnull().sum()} datetime values failed to convert")
+            else:
+                print("All datetime values converted successfully!")
+
+            # Continue with your processing
+            df['date'] = df['Datetime'].dt.strftime('%Y-%m-%d')
+            df['timestamp'] = df['Datetime'].dt.strftime('%H:%M:%S')
+            df['open'] = df['Open']
+            df['high'] = df['High']
+            df['low'] = df['Low']
+            df['close'] = df['Close']
+
+            # Create output DataFrame
+            output_df = df[['date', 'timestamp', 'open', 'high', 'low', 'close']]              
+            expected_columns = ['date', 'timestamp', 'open', 'high', 'low', 'close']
+            missing_columns = [col for col in expected_columns if not any(existing_col.lower() == col.lower() for existing_col in output_df.columns)]
 
             if missing_columns:
                 st.sidebar.warning(f"File {filename}: Missing columns: {', '.join(missing_columns)}. Skipping.")
                 continue
 
-            column_mapping = {expected_col: actual_col for expected_col in expected_columns for actual_col in df.columns if actual_col.lower() == expected_col.lower()}
-            df_processed = df.rename(columns={column_mapping[col]: col for col in expected_columns if col in column_mapping})
+            column_mapping = {expected_col: actual_col for expected_col in expected_columns for actual_col in output_df.columns if actual_col.lower() == expected_col.lower()}
+            df_processed = output_df.rename(columns={column_mapping[col]: col for col in expected_columns if col in column_mapping})
             df_processed['datetime'] = pd.to_datetime(df_processed['date'] + ' ' + df_processed['timestamp'])
             df_processed = utils.convert_to_ny_local_time(df_processed, timestamp_column='datetime')
 
-            for col in ['open', 'high', 'low', 'close', 'volume']:
+            for col in ['open', 'high', 'low', 'close']:
                 df_processed[col] = pd.to_numeric(df_processed[col], errors='coerce')
 
             df_processed = df_processed.sort_values('datetime')
@@ -45,8 +75,7 @@ def prepare_and_cache_data(selected_files, selected_tf_code, selected_reference_
                 'open': 'first',
                 'high': 'max',
                 'low': 'min',
-                'close': 'last',
-                'volume': 'sum'
+                'close': 'last'
             }).dropna()
 
             m1_cache_path = utils.CACHE_DIR / utils.get_cache_filename(filename, "1T")
@@ -57,8 +86,7 @@ def prepare_and_cache_data(selected_files, selected_tf_code, selected_reference_
                 'open': 'first',
                 'high': 'max',
                 'low': 'min',
-                'close': 'last',
-                'volume': 'sum'
+                'close': 'last'
             }).dropna()
 
             reference_cache_path = utils.CACHE_DIR / utils.get_cache_filename(filename, selected_reference_tf_code)
@@ -69,8 +97,7 @@ def prepare_and_cache_data(selected_files, selected_tf_code, selected_reference_
                 'open': 'first',
                 'high': 'max',
                 'low': 'min',
-                'close': 'last',
-                'volume': 'sum'
+                'close': 'last'
             }).dropna()
 
             selected_tf_cache_path = utils.CACHE_DIR / utils.get_cache_filename(filename, selected_tf_code)

@@ -33,6 +33,10 @@ sl_percent = st.sidebar.number_input("Stop Loss %", value=0.3, step=0.05, format
  #   "Use dynamic stop loss (50% of previous hourly candle or user-defined SL, whichever is closer)",
   #  value=False  # Default to disabled
 #)
+#enable_dynamic_sl = st.sidebar.checkbox(
+ #   "Use dynamic stop loss (50% of previous hourly candle or user-defined SL, whichever is closer)",
+  #  value=False  # Default to disabled
+#)
 
 # Reference timeframe selection
 reference_timeframe_options = ["1 Minute (M1)", "5 Minutes (M5)","10 Minutes (M10)", "15 Minutes (M15)", "30 Minutes (M30)"]
@@ -53,7 +57,8 @@ selected_reference_tf = st.sidebar.selectbox(
 selected_reference_tf_code = reference_timeframe_mapping[selected_reference_tf]
 
 # Timeframe selection for resampling
-resampling_options = ["5 Minutes (M5)", "15 Minutes (M15)", "30 Minutes (M30)", "1 Hour (H1)", "4 Hours (H4)"]
+# This is not needed so commenting it out and defaulting selected_tf to H1
+#resampling_options = ["5 Minutes (M5)", "15 Minutes (M15)", "30 Minutes (M30)", "1 Hour (H1)", "4 Hours (H4)"]
 resample_mapping = {
     "5 Minutes (M5)": "5T",
     "15 Minutes (M15)": "15T",
@@ -62,13 +67,14 @@ resample_mapping = {
     "4 Hours (H4)": "4H"
 }
 
-selected_tf = st.sidebar.selectbox(
-    "Select larger timeframe",
-    options=resampling_options,
-    index=3  # Default to H1
-)
+#selected_tf = st.sidebar.selectbox(
+#    "Select larger timeframe",
+#    options=resampling_options,
+#    index=3  # Default to H1
+#)
+selected_tf = "1 Hour (H1)"
+selected_tf_code = "1H"
 
-selected_tf_code = resample_mapping[selected_tf]
 
 # Toggle switch for end-of-timeframe restriction
 enable_end_of_tf_restriction = st.sidebar.checkbox(
@@ -82,11 +88,16 @@ enable_reverse_calculation = st.sidebar.checkbox(
     value=False  # Default to disabled
 )
 
-# Get available CSV files
-available_files = list(utils.DATA_DIR.glob('*.csv'))
-selected_files = st.sidebar.multiselect(
-    "Select CSV files to analyze",
-    options=[file.name for file in available_files]
+# Toggle switch for trade direction
+enable_reverse_calculation = st.sidebar.checkbox(
+    "Calculate the probabilities with fading the reference candle",
+    value=False  # Default to disabled
+)
+
+# Toggle switch for trade direction
+enable_reverse_calculation = st.sidebar.checkbox(
+    "Calculate the probabilities with fading the reference candle",
+    value=False  # Default to disabled
 )
 
 # Multiselect widget for days of the week
@@ -96,31 +107,13 @@ selected_days = st.sidebar.multiselect(
     default=['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Sunday']  # Default to weekdays
 )
 
-# Add a multi-select dropdown for hour selection
-#st.sidebar.header("Filter Hourly Candles by Specific Hours")
-#selected_hours = st.sidebar.multiselect(
-#    "Select Hours to Include",
-#    options=list(range(24)),  # Hours from 0 to 23
-#    default=[2, 5, 8]  # Default selected hours (2 AM, 5 AM, 8 AM)
-#)
-
-# Filter the h1_data based on the selected hours
-#if selected_hours:
- #   filtered_h1_data = selected_tf_code[selected_tf_code['datetime'].dt.hour.isin(selected_hours)]
-#else:
- #   filtered_h1_data = selected_tf_code  # If no hours are selected, use all data
-
-
 prepare_data = st.sidebar.button("Prepare & Cache Data")
 start_analysis = st.sidebar.button("Start Analysis")
 filter_best_candles = st.sidebar.button("Filter by Best H1 Candles")
 
 # Main function to run the analysis
-def run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction, enable_reverse_calculation, selected_days):
-    if not selected_files:
-        st.sidebar.error("No files selected. Please select at least one CSV file.")
-        return
-
+def run_analysis(selected_tf_code, selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction, enable_reverse_calculation, selected_days):
+    selected_files = list(utils.DATA_DIR.glob('*.csv'))
     # Check if cached data exists for both the selected timeframe and reference timeframe
     all_cached = all(
         (utils.CACHE_DIR / utils.get_cache_filename(filename, selected_tf_code)).exists() and
@@ -128,9 +121,7 @@ def run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, t
         for filename in selected_files
     )
 
-    if not all_cached:
-        st.warning("Some files have not been prepared. Please click 'Prepare & Cache Data' first.")
-        return
+    
 
     with st.spinner("Loading data..."):
         # Load and combine reference timeframe data
@@ -155,13 +146,22 @@ def run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, t
                 else:
                     h1_combined = pd.concat([h1_combined, h1_data])
 
-    if reference_combined is not None:
-        reference_combined = reference_combined.sort_index()
+    # Check if data was loaded successfully
+    if reference_combined is None:
+        st.error("No reference timeframe data available. Please check your cache files.")
+        return
+        
+    if h1_combined is None:
+        st.error("No data available for the selected timeframe. Please check your cache files.")
+        return
 
-    if h1_combined is not None:
-        h1_combined = h1_combined.sort_index()
-
-    results = analysis.analyze_candle_batch(h1_combined, reference_combined,selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction,enable_reverse_calculation)
+    # Sort the data
+    reference_combined = reference_combined.sort_index()
+    h1_combined = h1_combined.sort_index()
+    
+    results = analysis.analyze_candle_batch(h1_combined, reference_combined, selected_reference_tf_code, 
+                                          tp_percent, sl_percent, enable_end_of_tf_restriction,
+                                          enable_reverse_calculation)
     
     # Filter results based on selected days
     if selected_days:
@@ -183,12 +183,11 @@ def run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, t
                 results.loc[mask, 'probability'] = probability
 
         display.display_analysis_results(results, selected_tf_code)
-
 if prepare_data:
-    data_preparation.prepare_and_cache_data(selected_files, selected_tf_code, selected_reference_tf_code)
+    data_preparation.prepare_and_cache_data(selected_tf_code, selected_reference_tf_code)
 
 if start_analysis:
-    run_analysis(selected_files, selected_tf_code, selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction, enable_reverse_calculation, selected_days)
+    run_analysis(selected_tf_code, selected_reference_tf_code, tp_percent, sl_percent, enable_end_of_tf_restriction, enable_reverse_calculation, selected_days)
 
 if filter_best_candles:
     data_preparation.filter_best_candles(selected_reference_tf, selected_tf,selected_tf_code)

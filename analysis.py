@@ -43,7 +43,6 @@ def analyze_candle_batch(h1_data, reference_data, selected_reference_tf_code, tp
     for i, (tf_time, tf_row) in enumerate(h1_data.iterrows()):
         tf_end_time = tf_time + pd.Timedelta(hours=1) - pd.Timedelta(seconds=1)
         reference_candles_in_tf = reference_data.loc[tf_time:tf_end_time]
-
         if len(reference_candles_in_tf) > 0:
             first_reference_candle = reference_candles_in_tf.iloc[0]
             candle_size = first_reference_candle['high'] - first_reference_candle['low']
@@ -131,7 +130,6 @@ def analyze_candle_batch(h1_data, reference_data, selected_reference_tf_code, tp
                     'hit_target_first': hit_target,
                     'hit_stoploss_first': hit_stop,
                     'day_of_week': tf_time.strftime('%A'),
-                    'hour_of_day': tf_time.strftime("%I"),
                     'mae': mae,
                     'mfe': mfe,
                     'time_to_hit': time_to_hit,
